@@ -38,21 +38,21 @@ try:
             print e
         return success
 
-    def modify_element_in_store(entry_sequence, modified_element, is_propagated_call=False):
+    def modify_element_in_store(entry_sequence, element_id, modified_element, is_propagated_call=False):
         global board, node_id
         success = False
         try:
-            board = modified_element
+            board[element_id] = modified_element
             success = True
         except Exception as e:
             print e
         return success
 
-    def delete_element_from_store(entry_sequence, is_propagated_call=False):
+    def delete_element_from_store(entry_sequence, element_id, is_propagated_call=False):
         global board, node_id
         success = False
         try:
-            board = ""
+            board.pop(element_id, None)
             success = True
         except Exception as e:
             print e
@@ -127,9 +127,18 @@ try:
 
     @app.post('/board/<element_id:int>/')
     def client_action_received(element_id):
-        print element_id
-        # todo
-        pass
+        global node_id, board
+        try:
+            action = request.forms.get('delete')
+            if action == 'delete':
+                delete_element_from_store(board, element_id)
+            if action == 'modify':
+                new_entry = request.forms.get('modify_entry')
+                modify_element_in_store(board, element_id, new_entry)
+            return "Success"
+        except Exception as e:
+            print e
+        return False
 
     @app.post('/propagate/<action>/<element_id>')
     def propagation_received(action, element_id):

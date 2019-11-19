@@ -8,7 +8,7 @@
 <!-- Important for the browser to show the page in the correct encoding -->
 <meta charset="UTF-8">
 <!-- Important for the browser to include the jQuery library. It is used to update the page contents automatically. -->
-<script src="https://ajax.googleapis.com/ajax/libs/jquery/2.1.4/jquery.min.js"></script>
+<script src="https://ajax.googleapis.com/ajax/libs/jquery/2.1.4/jquery.min.js" type="text/javascript"></script>
 <!-- Inlined javascript code. This could be optionally hosted in another file on the server and included using 'src' attribute as above -->
 <script>
 
