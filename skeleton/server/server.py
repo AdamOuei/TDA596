@@ -20,7 +20,7 @@ try:
 
     unique_id = 1
 
-    board = {"0": "nothing"}
+    board = {}
 
     # ------------------------------------------------------------------------------------------------------
     # BOARD FUNCTIONS
@@ -113,6 +113,12 @@ try:
         try:
             new_entry = request.forms.get('entry')
             add_new_element_to_store(board, new_entry)
+            element_id = request.forms.get('id')
+            thread = Thread(target=propagate_to_vessels,
+                            args=('/propagate/add/none', new_entry))
+            thread.daemon = True
+            thread.start()
+            thread.join()
             # you might want to change None here
             # you should propagate something
             # Please use threads to avoid blocking
@@ -142,7 +148,9 @@ try:
 
     @app.post('/propagate/<action>/<element_id>')
     def propagation_received(action, element_id):
-        # todo
+        if action == "add":
+
+            # todo
         pass
 
     # ------------------------------------------------------------------------------------------------------
