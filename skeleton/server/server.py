@@ -18,24 +18,27 @@ import requests
 try:
     app = Bottle()
 
-    board = "nothing" 
+    unique_id = 1
 
+    board = {"0": "nothing"}
 
     # ------------------------------------------------------------------------------------------------------
     # BOARD FUNCTIONS
     # You will probably need to modify them
     # ------------------------------------------------------------------------------------------------------
+
     def add_new_element_to_store(entry_sequence, element, is_propagated_call=False):
-        global board, node_id
+        global board, node_id, unique_id
         success = False
         try:
-            board = element
+            board[unique_id] = element
+            unique_id += 1
             success = True
         except Exception as e:
             print e
         return success
 
-    def modify_element_in_store(entry_sequence, modified_element, is_propagated_call = False):
+    def modify_element_in_store(entry_sequence, modified_element, is_propagated_call=False):
         global board, node_id
         success = False
         try:
@@ -45,7 +48,7 @@ try:
             print e
         return success
 
-    def delete_element_from_store(entry_sequence, is_propagated_call = False):
+    def delete_element_from_store(entry_sequence, is_propagated_call=False):
         global board, node_id
         success = False
         try:
@@ -63,7 +66,8 @@ try:
         success = False
         try:
             if 'POST' in req:
-                res = requests.post('http://{}{}'.format(vessel_ip, path), data=payload)
+                res = requests.post(
+                    'http://{}{}'.format(vessel_ip, path), data=payload)
             elif 'GET' in req:
                 res = requests.get('http://{}{}'.format(vessel_ip, path))
             else:
@@ -76,15 +80,14 @@ try:
             print e
         return success
 
-    def propagate_to_vessels(path, payload = None, req = 'POST'):
+    def propagate_to_vessels(path, payload=None, req='POST'):
         global vessel_list, node_id
 
         for vessel_id, vessel_ip in vessel_list.items():
-            if int(vessel_id) != node_id: # don't propagate to yourself
+            if int(vessel_id) != node_id:  # don't propagate to yourself
                 success = contact_vessel(vessel_ip, path, payload, req)
                 if not success:
                     print "\n\nCould not contact vessel {}\n\n".format(vessel_id)
-
 
     # ------------------------------------------------------------------------------------------------------
     # ROUTES
@@ -94,13 +97,13 @@ try:
     @app.route('/')
     def index():
         global board, node_id
-        return template('server/index.tpl', board_title='Vessel {}'.format(node_id), board_dict=sorted({"0":board,}.iteritems()), members_name_string='YOUR NAME')
+        return template('server/index.tpl', board_title='Vessel {}'.format(node_id), board_dict=sorted(board.iteritems()), members_name_string='YOUR NAME')
 
     @app.get('/board')
     def get_board():
         global board, node_id
         print board
-        return template('server/boardcontents_template.tpl',board_title='Vessel {}'.format(node_id), board_dict=sorted({"0":board,}.iteritems()))
+        return template('server/boardcontents_template.tpl', board_title='Vessel {}'.format(node_id), board_dict=sorted(board.iteritems()))
     # ------------------------------------------------------------------------------------------------------
     @app.post('/board')
     def client_add_received():
@@ -109,20 +112,22 @@ try:
         global board, node_id
         try:
             new_entry = request.forms.get('entry')
-            add_new_element_to_store(None, new_entry) # you might want to change None here
+            add_new_element_to_store(board, new_entry)
+            # you might want to change None here
             # you should propagate something
             # Please use threads to avoid blocking
             # thread = Thread(target=???,args=???)
             # For example: thread = Thread(target=propagate_to_vessels, args=....)
             # you should create the thread as a deamon with thread.daemon = True
             # then call thread.start() to spawn the thread
-            return True
+            return new_entry
         except Exception as e:
             print e
         return False
 
     @app.post('/board/<element_id:int>/')
     def client_action_received(element_id):
+        print element_id
         # todo
         pass
 
@@ -130,7 +135,7 @@ try:
     def propagation_received(action, element_id):
         # todo
         pass
-        
+
     # ------------------------------------------------------------------------------------------------------
     # EXECUTION
     # ------------------------------------------------------------------------------------------------------
@@ -138,9 +143,12 @@ try:
         global vessel_list, node_id, app
 
         port = 80
-        parser = argparse.ArgumentParser(description='Your own implementation of the distributed blackboard')
-        parser.add_argument('--id', nargs='?', dest='nid', default=1, type=int, help='This server ID')
-        parser.add_argument('--vessels', nargs='?', dest='nbv', default=1, type=int, help='The total number of vessels present in the system')
+        parser = argparse.ArgumentParser(
+            description='Your own implementation of the distributed blackboard')
+        parser.add_argument('--id', nargs='?', dest='nid',
+                            default=1, type=int, help='This server ID')
+        parser.add_argument('--vessels', nargs='?', dest='nbv', default=1,
+                            type=int, help='The total number of vessels present in the system')
         args = parser.parse_args()
         node_id = args.nid
         vessel_list = dict()
@@ -156,6 +164,6 @@ try:
     if __name__ == '__main__':
         main()
 except Exception as e:
-        traceback.print_exc()
-        while True:
-            time.sleep(60.)
+    traceback.print_exc()
+    while True:
+        time.sleep(60.)
