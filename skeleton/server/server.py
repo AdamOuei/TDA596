@@ -15,12 +15,33 @@ from threading import Thread
 from bottle import Bottle, run, request, template
 import requests
 # ------------------------------------------------------------------------------------------------------
+
+
+class Board:
+
+    board = {}
+
+    def __init__(self):
+        self.unique_id = 0
+
+    def add(self, entry):
+        self.board[self.unique_id] = entry
+        self.unique_id += 1
+
+    def modify(self, entry, element_id):
+        if element_id in self.board:
+            self.board[element_id] = entry
+        else:
+            return "Key does not exist"
+
+    def delete(self, element_id):
+        self.board.pop(element_id)
+
+
 try:
     app = Bottle()
 
-    unique_id = 1
-
-    board = {}
+    board = Board()
 
     # ------------------------------------------------------------------------------------------------------
     # BOARD FUNCTIONS
@@ -31,8 +52,7 @@ try:
         global board, node_id, unique_id
         success = False
         try:
-            board[unique_id] = element
-            unique_id += 1
+            board.add(element)
             success = True
         except Exception as e:
             print e
@@ -42,7 +62,7 @@ try:
         global board, node_id
         success = False
         try:
-            board[element_id] = modified_element
+            board.modify(element_id, modified_element)
             success = True
         except Exception as e:
             print e
@@ -52,7 +72,7 @@ try:
         global board, node_id
         success = False
         try:
-            board.pop(element_id, None)
+            board.delete(element_id)
             success = True
         except Exception as e:
             print e
@@ -97,12 +117,12 @@ try:
     @app.route('/')
     def index():
         global board, node_id
-        return template('server/index.tpl', board_title='Vessel {}'.format(node_id), board_dict=sorted(board.iteritems()), members_name_string='YOUR NAME')
+        return template('server/index.tpl', board_title='Vessel {}'.format(node_id), board_dict=sorted(board.board.iteritems()), members_name_string='YOUR NAME')
 
     @app.get('/board')
     def get_board():
         global board, node_id
-        return template('server/boardcontents_template.tpl', board_title='Vessel {}'.format(node_id), board_dict=sorted(board.iteritems()))
+        return template('server/boardcontents_template.tpl', board_title='Vessel {}'.format(node_id), board_dict=sorted(board.board.iteritems()))
     # ------------------------------------------------------------------------------------------------------
     @app.post('/board')
     def client_add_received():
@@ -117,13 +137,6 @@ try:
             thread.daemon = True
             thread.start()
             thread.join()
-            # you might want to change None here
-            # you should propagate something
-            # Please use threads to avoid blocking
-            # thread = Thread(target=???,args=???)
-            # For example: thread = Thread(target=propagate_to_vessels, args=....)
-            # you should create the thread as a deamon with thread.daemon = True
-            # then call thread.start() to spawn the thread
             return new_entry
         except Exception as e:
             print e
