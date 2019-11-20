@@ -28,11 +28,8 @@ class Board:
         self.board[self.unique_id] = entry
         self.unique_id += 1
 
-    def modify(self, entry, element_id):
-        if element_id in self.board:
-            self.board[element_id] = entry
-        else:
-            return "Key does not exist"
+    def modify(self, element_id, entry):
+        self.board[element_id] = entry
 
     def delete(self, element_id):
         self.board.pop(element_id)
@@ -144,28 +141,23 @@ try:
 
     @app.post('/board/<element_id:int>/')
     def client_action_received(element_id):
-        global node_id, board
         try:
             action = request.forms.get('delete')
+            str_element_id = str(element_id)
             if action == 'delete':
                 delete_element_from_store(element_id)
-                str_element_id = str(element_id)
                 thread = Thread(target=propagate_to_vessels,
                                 args=('/propagate/delete/' + str_element_id, None))
-                thread.daemon = True
-                thread.start()
-                thread.join()
 
-            if action == 'modify':
+            elif action == 'modify':
                 new_entry = request.forms.get('modify_entry')
                 modify_element_in_store(element_id, new_entry)
-                str_element_id = str(element_id)
                 thread = Thread(target=propagate_to_vessels,
                                 args=('/propagate/modify/' + str_element_id, new_entry))
-                thread.daemon = True
-                thread.start()
-                thread.join()
 
+            thread.daemon = True
+            thread.start()
+            thread.join()
             return "Success"
         except Exception as e:
             print e
@@ -173,17 +165,16 @@ try:
 
     @app.post('/propagate/<action>/<element_id>')
     def propagation_received(action, element_id):
-        #global node_id, board
+        # global node_id, board
+        json_object = request.json
         if action == "add":
-            json_object = request.json
             add_new_element_to_store(json_object)
-        elif action == "delete":
+        else:
             int_element_id = int(element_id)
-            delete_element_from_store(int_element_id)
-        elif action == "modify":
-            int_element_id = int(element_id)
-            modify_element_in_store(int_element_id, request.json)
-        pass
+            if action == "delete":
+                delete_element_from_store(int_element_id)
+            elif action == "modify":
+                modify_element_in_store(int_element_id, json_object)
 
     # ------------------------------------------------------------------------------------------------------
     # EXECUTION
