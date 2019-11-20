@@ -27,7 +27,7 @@ try:
     # You will probably need to modify them
     # ------------------------------------------------------------------------------------------------------
 
-    def add_new_element_to_store(entry_sequence, element, is_propagated_call=False):
+    def add_new_element_to_store(element, is_propagated_call=False):
         global board, node_id, unique_id
         success = False
         try:
@@ -67,7 +67,7 @@ try:
         try:
             if 'POST' in req:
                 res = requests.post(
-                    'http://{}{}'.format(vessel_ip, path), data=payload)
+                    'http://{}{}'.format(vessel_ip, path), json=payload)
             elif 'GET' in req:
                 res = requests.get('http://{}{}'.format(vessel_ip, path))
             else:
@@ -102,7 +102,6 @@ try:
     @app.get('/board')
     def get_board():
         global board, node_id
-        print board
         return template('server/boardcontents_template.tpl', board_title='Vessel {}'.format(node_id), board_dict=sorted(board.iteritems()))
     # ------------------------------------------------------------------------------------------------------
     @app.post('/board')
@@ -112,8 +111,7 @@ try:
         global board, node_id
         try:
             new_entry = request.forms.get('entry')
-            add_new_element_to_store(board, new_entry)
-            element_id = request.forms.get('id')
+            add_new_element_to_store(new_entry)
             thread = Thread(target=propagate_to_vessels,
                             args=('/propagate/add/none', new_entry))
             thread.daemon = True
@@ -138,6 +136,13 @@ try:
             action = request.forms.get('delete')
             if action == 'delete':
                 delete_element_from_store(board, element_id)
+                str_element_id = str(element_id)
+                thread = Thread(target=propagate_to_vessels,
+                                args=('/propagate/delete/' + str_element_id))
+                thread.daemon = True
+                thread.start()
+                thread.join()
+
             if action == 'modify':
                 new_entry = request.forms.get('modify_entry')
                 modify_element_in_store(board, element_id, new_entry)
@@ -148,9 +153,14 @@ try:
 
     @app.post('/propagate/<action>/<element_id>')
     def propagation_received(action, element_id):
+        global node_id, board
         if action == "add":
-
-            # todo
+            json_object = request.json
+            add_new_element_to_store(json_object)
+        elif action == "delete":
+            print element_id
+            print action
+            delete_element_from_store(board, element_id)
         pass
 
     # ------------------------------------------------------------------------------------------------------
