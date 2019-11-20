@@ -38,7 +38,7 @@ try:
             print e
         return success
 
-    def modify_element_in_store(entry_sequence, element_id, modified_element, is_propagated_call=False):
+    def modify_element_in_store(element_id, modified_element, is_propagated_call=False):
         global board, node_id
         success = False
         try:
@@ -48,7 +48,7 @@ try:
             print e
         return success
 
-    def delete_element_from_store(entry_sequence, element_id, is_propagated_call=False):
+    def delete_element_from_store(element_id, is_propagated_call=False):
         global board, node_id
         success = False
         try:
@@ -135,17 +135,24 @@ try:
         try:
             action = request.forms.get('delete')
             if action == 'delete':
-                delete_element_from_store(board, element_id)
+                delete_element_from_store(element_id)
                 str_element_id = str(element_id)
                 thread = Thread(target=propagate_to_vessels,
-                                args=('/propagate/delete/' + str_element_id))
+                                args=('/propagate/delete/' + str_element_id, None))
                 thread.daemon = True
                 thread.start()
                 thread.join()
 
             if action == 'modify':
                 new_entry = request.forms.get('modify_entry')
-                modify_element_in_store(board, element_id, new_entry)
+                modify_element_in_store(element_id, new_entry)
+                str_element_id = str(element_id)
+                thread = Thread(target=propagate_to_vessels,
+                                args=('/propagate/modify/' + str_element_id, new_entry))
+                thread.daemon = True
+                thread.start()
+                thread.join()
+
             return "Success"
         except Exception as e:
             print e
@@ -153,14 +160,16 @@ try:
 
     @app.post('/propagate/<action>/<element_id>')
     def propagation_received(action, element_id):
-        global node_id, board
+        #global node_id, board
         if action == "add":
             json_object = request.json
             add_new_element_to_store(json_object)
         elif action == "delete":
-            print element_id
-            print action
-            delete_element_from_store(board, element_id)
+            int_element_id = int(element_id)
+            delete_element_from_store(int_element_id)
+        elif action == "modify":
+            int_element_id = int(element_id)
+            modify_element_in_store(int_element_id, request.json)
         pass
 
     # ------------------------------------------------------------------------------------------------------
