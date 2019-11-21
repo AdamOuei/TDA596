@@ -17,6 +17,7 @@ import requests
 # ------------------------------------------------------------------------------------------------------
 
 
+# Class board for handling board actions
 class Board:
 
     board = {}
@@ -37,16 +38,14 @@ class Board:
 
 try:
     app = Bottle()
-
     board = Board()
 
     # ------------------------------------------------------------------------------------------------------
     # BOARD FUNCTIONS
-    # You will probably need to modify them
     # ------------------------------------------------------------------------------------------------------
 
     def add_new_element_to_store(element, is_propagated_call=False):
-        global board, node_id, unique_id
+        global board
         success = False
         try:
             board.add(element)
@@ -56,7 +55,7 @@ try:
         return success
 
     def modify_element_in_store(element_id, modified_element, is_propagated_call=False):
-        global board, node_id
+        global board
         success = False
         try:
             board.modify(element_id, modified_element)
@@ -66,7 +65,7 @@ try:
         return success
 
     def delete_element_from_store(element_id, is_propagated_call=False):
-        global board, node_id
+        global board
         success = False
         try:
             board.delete(element_id)
@@ -79,7 +78,7 @@ try:
     # DISTRIBUTED COMMUNICATIONS FUNCTIONS
     # ------------------------------------------------------------------------------------------------------
     def contact_vessel(vessel_ip, path, payload=None, req='POST'):
-        # Try to contact another server (vessel) through a POST or GET, once
+        # Try to contact another server (vessel) through a POST or GET request, once
         success = False
         try:
             if 'POST' in req:
@@ -98,6 +97,7 @@ try:
         return success
 
     def propagate_to_vessels(path, payload=None, req='POST'):
+        # Distributes to each vessel (except to yourself)
         global vessel_list, node_id
 
         for vessel_id, vessel_ip in vessel_list.items():
@@ -123,9 +123,8 @@ try:
     # ------------------------------------------------------------------------------------------------------
     @app.post('/board')
     def client_add_received():
-        '''Adds a new element to the board
-        Called directly when a user is doing a POST request on /board'''
-        global board, node_id
+        ''' Reads the entry and adds it to the clients Board.
+        Creates a thread and propagates the same entry to the other vessels'''
         try:
             new_entry = request.forms.get('entry')
             add_new_element_to_store(new_entry)
@@ -141,6 +140,8 @@ try:
 
     @app.post('/board/<element_id:int>/')
     def client_action_received(element_id):
+        ''' Depending on the action, either modifies or removes an entry in the clients board
+        Creates a thread and propagates the same action to the other vessels'''
         try:
             action = request.forms.get('delete')
             str_element_id = str(element_id)
@@ -165,7 +166,8 @@ try:
 
     @app.post('/propagate/<action>/<element_id>')
     def propagation_received(action, element_id):
-        # global node_id, board
+        ''' Reads the propagated data and depending on the action,
+        adds, modifies or deletes the entry from the vessels Board'''
         json_object = request.json
         if action == "add":
             add_new_element_to_store(json_object)
