@@ -168,15 +168,18 @@ try:
     def propagation_received(action, element_id):
         ''' Reads the propagated data and depending on the action,
         adds, modifies or deletes the entry from the vessels Board'''
+        print request.body.read()
         json_object = request.json
         if action == "add":
-            add_new_element_to_store(json_object)
+            add_new_element_to_store(json_object, is_propagated_call=True)
         else:
             int_element_id = int(element_id)
             if action == "delete":
-                delete_element_from_store(int_element_id)
+                delete_element_from_store(
+                    int_element_id, is_propagated_call=True)
             elif action == "modify":
-                modify_element_in_store(int_element_id, json_object)
+                modify_element_in_store(
+                    int_element_id, json_object, is_propagated_call=True)
 
     # ------------------------------------------------------------------------------------------------------
     # EXECUTION
