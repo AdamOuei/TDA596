@@ -127,9 +127,6 @@ try:
         thread.daemon = True
         thread.start()
         print "Contacted vessel"
-        # thread = Thread(target=contact_vessel, args=(next_ip, path, data))
-        # thread.daemon = True
-        # thread.start()
 
         # ------------------------------------------------------------------------------------------------------
         # ROUTES
@@ -139,8 +136,8 @@ try:
 
     @app.route('/')
     def index():
-        global board, node_id
-        return template('server/index.tpl', board_title='Vessel {}'.format(node_id), board_dict=sorted(board.board.iteritems()), members_name_string='YOUR NAME')
+        global board, node_id, leader, data
+        return template('server/index.tpl', board_title='Vessel {}'.format(node_id), board_dict=sorted(board.board.iteritems()), members_name_string='YOUR NAME', leader=leader, rand=data['random_value'])
 
     @app.get('/board')
     def get_board():
