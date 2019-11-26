@@ -75,17 +75,23 @@ try:
             print e
         return success
 
+    # ------------------------------------------------------------------------------------------------------
+    # HELPER FUNCTIONS
+    # ------------------------------------------------------------------------------------------------------
+
     def leader_selection_start(node_id):
+        # Waits for all nodes to be up, then starts the leader selection
         global data
+        # This is not good, this is a specific value for us. We should find some other wau to do this
         time.sleep(4)
         random_value = random.randint(0, 100000)
         data = {'node_id': node_id,
                 'random_value': random_value, 'start_node': node_id}
         send_to_next_vessel(data)
 
-        # ------------------------------------------------------------------------------------------------------
-        # DISTRIBUTED COMMUNICATIONS FUNCTIONS
-        # ------------------------------------------------------------------------------------------------------
+    # ------------------------------------------------------------------------------------------------------
+    # DISTRIBUTED COMMUNICATIONS FUNCTIONS
+    # ------------------------------------------------------------------------------------------------------
 
     def contact_vessel(vessel_ip, path, payload=None, req='POST'):
         # Try to contact another server (vessel) through a POST or GET request, once
@@ -117,6 +123,7 @@ try:
                     print "\n\nCould not contact vessel {}\n\n".format(vessel_id)
 
     def send_to_next_vessel(data):
+        # Passes data from one node to its next neighbor
         global vessel_list, node_id
 
         path = '/select/leader/{}'.format(node_id)
@@ -128,11 +135,11 @@ try:
         thread.start()
         print "Contacted vessel"
 
-        # ------------------------------------------------------------------------------------------------------
-        # ROUTES
-        # ------------------------------------------------------------------------------------------------------
-        # a single example (index) for get, and one for post
-        # ------------------------------------------------------------------------------------------------------
+    # ------------------------------------------------------------------------------------------------------
+    # ROUTES
+    # ------------------------------------------------------------------------------------------------------
+    # a single example (index) for get, and one for post
+    # ------------------------------------------------------------------------------------------------------
 
     @app.route('/')
     def index():
