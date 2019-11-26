@@ -11,6 +11,7 @@ import time
 import json
 import argparse
 from threading import Thread
+import random
 
 from bottle import Bottle, run, request, template
 import requests
@@ -77,6 +78,7 @@ try:
     # ------------------------------------------------------------------------------------------------------
     # DISTRIBUTED COMMUNICATIONS FUNCTIONS
     # ------------------------------------------------------------------------------------------------------
+
     def contact_vessel(vessel_ip, path, payload=None, req='POST'):
         # Try to contact another server (vessel) through a POST or GET request, once
         success = False
@@ -181,6 +183,37 @@ try:
                 modify_element_in_store(
                     int_element_id, json_object, is_propagated_call=True)
 
+    @app.post('/propagate/leader')
+    def select_leader(list_of_nodes=[], current_id=2):
+        # Get a random index to start searching for leader
+        global vessel_list, node_id, leader
+        if current_id != node_id:
+            print "exit"
+            exit
+        try:
+            random_number = random.randint(0, 10000)
+            next_ip = vessel_list[str((node_id % 9) + 1)]
+            if len(list_of_nodes == 0):
+                list_of_nodes.append({'id': node_id, 'rand': random_number})
+                print "if" + str(list_of_nodes)
+                contact_vessel(next_ip, '/propagate/leader', list_of_nodes)
+            elif node_id != int(list_of_nodes[0].id):
+                list_of_nodes = request.json
+                print "first elif {}".format(list_of_nodes)
+                list_of_nodes.append({'id': node_id, 'rand': random_number})
+                print "elif" + list_of_nodes
+                contact_vessel(next_ip, '/propagate/leader', list_of_nodes)
+                print "Current node is:{} Next node should be : {} ".format(node_id, node_id+1)
+            else:
+                list_of_nodes = request.json
+                leader = list_of_nodes[0].id
+                for node in list_of_nodes:
+                    if list_of_nodes[leader].rand < node.rand:
+                        leader = node
+            print "The leader chosen was: " + leader
+        except Exception as e:
+            requests.HTTPError("Could not choose leader")
+
     # ------------------------------------------------------------------------------------------------------
     # EXECUTION
     # ------------------------------------------------------------------------------------------------------
@@ -202,7 +235,14 @@ try:
             vessel_list[str(i)] = '10.1.0.{}'.format(str(i))
 
         try:
+            thread = Thread(target=select_leader, args=())
+            thread.start()
             run(app, host=vessel_list[str(node_id)], port=port)
+            thread.join()
+            sleep(1)
+            print "Test"
+            # leader_thread = Thread(target=select_leader, args=)
+            # select_leader(vessel_list)
         except Exception as e:
             print e
     # ------------------------------------------------------------------------------------------------------
