@@ -97,6 +97,7 @@ try:
         # Try to contact another server (vessel) through a POST or GET request, once
         success = False
         try:
+            print "I am contacting {}, with path: {} and payload : {}".format(vessel_ip, path, payload)
             if 'POST' in req:
                 res = requests.post(
                     'http://{}{}'.format(vessel_ip, path), json=payload)
@@ -160,10 +161,9 @@ try:
             new_entry = request.forms.get('entry')
             if node_id != leader:
                 leader_ip = vessel_list.get(str(leader))
-                print "I am not the leader, the leader is {} with ip {} and I am sending my data to it".format(leader, leader_ip)
                 contact_vessel(
                     leader_ip, '/leader/add/0', new_entry)
-                print "I have contacted the leader"
+
                 # thread = Thread(target=contact_vessel, args=(
                 #     leader_ip, '/leader/add/none', new_entry))
                 # thread.daemon
@@ -188,26 +188,20 @@ try:
         try:
             action = request.forms.get('delete')
             str_element_id = str(element_id)
-            if action == 'delete':
-                if node_id != leader:
-                    leader_ip = vessel_list.get(str(leader))
-                    contact_vessel(
-                        leader_ip, '/leader/delete/' + str_element_id, None)
-                else:
+            new_entry = request.forms.get('modify_entry')
+            if node_id != leader:
+                leader_ip = vessel_list.get(str(leader))
+                path = '/leader/{}/{}'.format(action, element_id)
+                contact_vessel(leader_ip, path, new_entry)
+            else:
+                if action == 'delete':
                     delete_element_from_store(element_id)
                     thread = Thread(target=propagate_to_vessels,
                                     args=('/propagate/delete/' + str_element_id, None))
-            elif action == 'modify':
-                new_entry = request.forms.get('modify_entry')
-                if node_id != leader:
-                    leader_ip = vessel_list.get(str(leader))
-                    contact_vessel(vessel_ip, '/leader/modify/' +
-                                   str_element_id, new_entry)
-                else:
+                elif action == 'modify':
                     modify_element_in_store(element_id, new_entry)
                     thread = Thread(target=propagate_to_vessels,
                                     args=('/propagate/modify/' + str_element_id, new_entry))
-
             thread.daemon = True
             thread.start()
             return "Success"
@@ -256,23 +250,24 @@ try:
         try:
             json_object = request.json
             int_element_id = int(element_id)
+            print "Leader has received action and is trying to propagate with action: {} and with element_id {}".format(action, element_id)
             if action == "add":
                 print json_object
                 add_new_element_to_store(json_object, is_propagated_call=True)
                 print "Added element to store in leader_received"
                 thread = Thread(target=propagate_to_vessels,
-                                args=('/propagate/add/none', json_object))
+                                args=('/propagate/{}/{}'.format(action, None), json_object))
                 print "Propagate to vessels in leader_received"
             elif action == "delete":
                 delete_element_from_store(
                     int_element_id, is_propagated_call=True)
                 thread = Thread(target=propagate_to_vessels,
-                                args=('/propagate/delete/' + str_element_id, None))
+                                args=('/propagate/{}/{}'.format(action, element_id), None))
             elif action == "modify":
                 modify_element_in_store(
                     int_element_id, json_object, is_propagated_call=True)
                 thread = Thread(target=propagate_to_vessels,
-                                args=('/propagate/modify/' + str_element_id, json_object))
+                                args=('/propagate/{}/{}'.format(action, element_id), json_object))
             thread.daemon = True
             thread.start()
         except Exception as e:
@@ -303,7 +298,6 @@ try:
             thread.start()
             run(app, host=vessel_list[str(node_id)], port=port)
             # sleep(1)
-            print "Test"
             # leader_thread = Thread(target=sel ect_leader, args=)
             # select_leader(vessel_list)
         except Exception as e:
