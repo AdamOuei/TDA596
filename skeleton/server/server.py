@@ -3,7 +3,7 @@
 # TDA596 - Lab 1
 # server/server.py
 # Input: Node_ID total_number_of_ID
-# Student: John Doe
+# Student: Omar Oueidat and Tobias Lindgren
 # ------------------------------------------------------------------------------------------------------
 import traceback
 import sys
@@ -23,24 +23,27 @@ class Board:
 
     board = {}
 
-    def __init__(self):
-        self.unique_id = 0
-
     def add(self, entry):
-        self.board[self.unique_id] = entry
-        self.unique_id += 1
+        self.board[entry['ident']] = entry['data']
 
-    def modify(self, element_id, entry):
-        self.board[element_id] = entry
+    def modify(self, element_id, data):
+        self.board[element_id] = data
 
-    def delete(self, element_id):
-        self.board.pop(element_id)
+    def delete(self, ident):
+        self.board.pop(ident)
+
+    def sort(self):
+        tmp = {}
+        for i in sorted(self.board.keys()):
+            tmp[i] = self.board[i]
+        self.board = tmp
 
 
 try:
     app = Bottle()
     board = Board()
     leader = 1
+    unique_id = 0
     # ------------------------------------------------------------------------------------------------------
     # BOARD FUNCTIONS
     # ------------------------------------------------------------------------------------------------------
@@ -79,10 +82,16 @@ try:
     # HELPER FUNCTIONS
     # ------------------------------------------------------------------------------------------------------
 
+    def create_entry(new_entry):
+        # Gives each new entry a unique id
+        global unique_id
+        entry = {'ident': unique_id, 'data': new_entry}
+        unique_id += 1
+        return entry
+
     def leader_selection_start(node_id):
         # Waits for all nodes to be up, then starts the leader selection
         global data
-        # This is not good, this is a specific value for us. We should find some other wau to do this
         time.sleep(4)
         random_value = random.randint(0, 100000)
         data = {'node_id': node_id,
@@ -106,7 +115,6 @@ try:
             else:
                 print 'Non implemented feature!'
             # result is in res.text or res.json()
-            # print(res.text)
             if res.status_code == 200:
                 success = True
         except Exception as e:
@@ -131,6 +139,7 @@ try:
         next_id = (int(node_id) % 7) + 1
         next_ip = vessel_list.get(str(next_id))
         print "The next ip is : {} and the data sent was : {}".format(next_ip, data)
+
         thread = Thread(target=contact_vessel, args=(next_ip, path, data))
         thread.daemon = True
         thread.start()
@@ -154,24 +163,23 @@ try:
     # ------------------------------------------------------------------------------------------------------
     @app.post('/board')
     def client_add_received():
-        ''' Reads the entry and adds it to the clients Board.
-        Creates a thread and propagates the same entry to the other vessels'''
-        global leader, node_id
+        ''' Reads the entry and checks if the current node is the leader. 
+        If it is not leader, sends the entry to the leader. 
+        IF it is leader, it creates an entry_object and adds to the board and sorts the board on id. 
+        Creates a thread and propagates the same entry_object to the other vessels'''
+        global leader, node_id, board
         try:
             new_entry = request.forms.get('entry')
             if node_id != leader:
                 leader_ip = vessel_list.get(str(leader))
                 contact_vessel(
                     leader_ip, '/leader/add/0', new_entry)
-
-                # thread = Thread(target=contact_vessel, args=(
-                #     leader_ip, '/leader/add/none', new_entry))
-                # thread.daemon
-                # thread.start()
             else:
-                add_new_element_to_store(new_entry)
+                entry_object = create_entry(new_entry)
+                add_new_element_to_store(entry_object)
+                board.sort()
                 thread = Thread(target=propagate_to_vessels,
-                                args=('/propagate/add/0', new_entry))
+                                args=('/propagate/add/0', entry_object))
                 thread.daemon = True
                 thread.start()
                 thread.join()
@@ -182,8 +190,10 @@ try:
 
     @app.post('/board/<element_id:int>/')
     def client_action_received(element_id):
-        ''' Depending on the action, either modifies or removes an entry in the clients board
-        Creates a thread and propagates the same action to the other vessels'''
+        ''' Checks if current node os leader. 
+        If leader, depending on the action, either modifies or removes an entry in the clients board.
+        Creates a thread and propagates the same action to the other vessels.
+        If not leader, sends data to the leader'''
         global leader, node_id, vessel_list
         try:
             action = request.forms.get('delete')
@@ -213,10 +223,11 @@ try:
     def propagation_received(action, element_id):
         ''' Reads the propagated data and depending on the action,
         adds, modifies or deletes the entry from the vessels Board'''
-        # print request.body.read()
+        global board
         json_object = request.json
         if action == "add":
             add_new_element_to_store(json_object, is_propagated_call=True)
+            board.sort()
         else:
             int_element_id = int(element_id)
             if action == "delete":
@@ -228,6 +239,9 @@ try:
 
     @app.post('/select/leader/<sender_node>')
     def select_leader(sender_node):
+        ''' Checks if the data sent is from the same node as the current node.
+        If not and the random number sent to the node is larger than the raandom number of the current leader, 
+        then the sent data is the data for the leader'''
         global node_id, data, leader
         print "In select leader"
         try:
@@ -236,10 +250,12 @@ try:
             sender_r_number = json_object['random_value']
             sender_start_node = json_object['start_node']
             sender_node_id = json_object['node_id']
+            print "send node: {}, current leader: {}".format(sender_node_id, data['node_id'])
             if(int(data['node_id']) != int(sender_node_id)):
                 if(sender_r_number > data['random_value']):
-                    data = json_object
-                send_to_next_vessel(data)
+                    data['node_id'] = sender_node_id
+                    data['random_value'] = sender_r_number
+                    send_to_next_vessel(data)
                 leader = data['node_id']
                 print leader
         except Exception as e:
@@ -247,16 +263,21 @@ try:
 
     @app.post('/leader/<action>/<element_id:int>')
     def leader_received(action, element_id):
+        ''' Reads the propagated data and depending on the action,
+        adds, modifies or deletes the entry from the leaders Board.
+        Propagates the data to the other vessels.  '''
+        global board
         try:
             json_object = request.json
             int_element_id = int(element_id)
             print "Leader has received action and is trying to propagate with action: {} and with element_id {}".format(action, element_id)
             if action == "add":
                 print json_object
-                add_new_element_to_store(json_object, is_propagated_call=True)
-                print "Added element to store in leader_received"
+                entry_object = create_entry(json_object)
+                add_new_element_to_store(entry_object, is_propagated_call=True)
+                board.sort()
                 thread = Thread(target=propagate_to_vessels,
-                                args=('/propagate/{}/{}'.format(action, None), json_object))
+                                args=('/propagate/{}/{}'.format(action, None), entry_object))
                 print "Propagate to vessels in leader_received"
             elif action == "delete":
                 delete_element_from_store(
