@@ -29,8 +29,8 @@ class Board:
     def modify(self, element_id, data):
         self.board[element_id] = data
 
-    def delete(self, ident):
-        self.board.pop(ident)
+    def delete(self, element_id):
+        self.board.pop(element_id)
 
     def sort(self):
         tmp = {}
@@ -42,7 +42,6 @@ class Board:
 try:
     app = Bottle()
     board = Board()
-    leader = 1
     unique_id = 0
     # ------------------------------------------------------------------------------------------------------
     # BOARD FUNCTIONS
@@ -89,15 +88,6 @@ try:
         unique_id += 1
         return entry
 
-    def leader_selection_start(node_id):
-        # Waits for all nodes to be up, then starts the leader selection
-        global data
-        time.sleep(4)
-        random_value = random.randint(0, 100000)
-        data = {'node_id': node_id,
-                'random_value': random_value, 'start_node': node_id}
-        send_to_next_vessel(data)
-
     # ------------------------------------------------------------------------------------------------------
     # DISTRIBUTED COMMUNICATIONS FUNCTIONS
     # ------------------------------------------------------------------------------------------------------
@@ -131,20 +121,6 @@ try:
                 if not success:
                     print "\n\nCould not contact vessel {}\n\n".format(vessel_id)
 
-    def send_to_next_vessel(data):
-        # Passes data from one node to its next neighbor
-        global vessel_list, node_id
-
-        path = '/select/leader/{}'.format(node_id)
-        next_id = (int(node_id) % 7) + 1
-        next_ip = vessel_list.get(str(next_id))
-        print "The next ip is : {} and the data sent was : {}".format(next_ip, data)
-
-        thread = Thread(target=contact_vessel, args=(next_ip, path, data))
-        thread.daemon = True
-        thread.start()
-        print "Contacted vessel"
-
     # ------------------------------------------------------------------------------------------------------
     # ROUTES
     # ------------------------------------------------------------------------------------------------------
@@ -153,8 +129,8 @@ try:
 
     @app.route('/')
     def index():
-        global board, node_id, leader, data
-        return template('server/index.tpl', board_title='Vessel {}'.format(node_id), board_dict=sorted(board.board.iteritems()), members_name_string='YOUR NAME', leader=leader, rand=data['random_value'])
+        global board, node_id
+        return template('server/index.tpl', board_title='Vessel {}'.format(node_id), board_dict=sorted(board.board.iteritems()), members_name_string='YOUR NAME')
 
     @app.get('/board')
     def get_board():
@@ -163,26 +139,19 @@ try:
     # ------------------------------------------------------------------------------------------------------
     @app.post('/board')
     def client_add_received():
-        ''' Reads the entry and checks if the current node is the leader. 
-        If it is not leader, sends the entry to the leader. 
-        IF it is leader, it creates an entry_object and adds to the board and sorts the board on id. 
+        ''' Reads the entry and creates an entry_object with an ID for the entry. 
         Creates a thread and propagates the same entry_object to the other vessels'''
-        global leader, node_id, board
+        global node_id, board
         try:
             new_entry = request.forms.get('entry')
-            if node_id != leader:
-                leader_ip = vessel_list.get(str(leader))
-                contact_vessel(
-                    leader_ip, '/leader/add/0', new_entry)
-            else:
-                entry_object = create_entry(new_entry)
-                add_new_element_to_store(entry_object)
-                board.sort()
-                thread = Thread(target=propagate_to_vessels,
-                                args=('/propagate/add/0', entry_object))
-                thread.daemon = True
-                thread.start()
-                thread.join()
+            entry_object = create_entry(new_entry)
+            add_new_element_to_store(entry_object)
+            board.sort()
+            thread = Thread(target=propagate_to_vessels,
+                            args=('/propagate/add/0', entry_object))
+            thread.daemon = True
+            thread.start()
+            thread.join()
             return new_entry
         except Exception as e:
             print e
@@ -190,28 +159,21 @@ try:
 
     @app.post('/board/<element_id:int>/')
     def client_action_received(element_id):
-        ''' Checks if current node os leader. 
-        If leader, depending on the action, either modifies or removes an entry in the clients board.
-        Creates a thread and propagates the same action to the other vessels.
-        If not leader, sends data to the leader'''
-        global leader, node_id, vessel_list
+        ''' Depending on the action, either modifies or removes an entry in the clients board.
+        Creates a thread and propagates the same action to the other vessels.'''
+        global node_id, vessel_list
         try:
             action = request.forms.get('delete')
             str_element_id = str(element_id)
             new_entry = request.forms.get('modify_entry')
-            if node_id != leader:
-                leader_ip = vessel_list.get(str(leader))
-                path = '/leader/{}/{}'.format(action, element_id)
-                contact_vessel(leader_ip, path, new_entry)
-            else:
-                if action == 'delete':
-                    delete_element_from_store(element_id)
-                    thread = Thread(target=propagate_to_vessels,
-                                    args=('/propagate/delete/' + str_element_id, None))
-                elif action == 'modify':
-                    modify_element_in_store(element_id, new_entry)
-                    thread = Thread(target=propagate_to_vessels,
-                                    args=('/propagate/modify/' + str_element_id, new_entry))
+            if action == 'delete':
+                delete_element_from_store(element_id)
+                thread = Thread(target=propagate_to_vessels,
+                                args=('/propagate/delete/' + str_element_id, None))
+            elif action == 'modify':
+                modify_element_in_store(element_id, new_entry)
+                thread = Thread(target=propagate_to_vessels,
+                                args=('/propagate/modify/' + str_element_id, new_entry))
             thread.daemon = True
             thread.start()
             return "Success"
@@ -237,63 +199,6 @@ try:
                 modify_element_in_store(
                     int_element_id, json_object, is_propagated_call=True)
 
-    @app.post('/select/leader/<sender_node>')
-    def select_leader(sender_node):
-        ''' Checks if the data sent is from the same node as the current node.
-        If not and the random number sent to the node is larger than the raandom number of the current leader, 
-        then the sent data is the data for the leader'''
-        global node_id, data, leader
-        print "In select leader"
-        try:
-            json_object = request.json
-
-            sender_r_number = json_object['random_value']
-            sender_start_node = json_object['start_node']
-            sender_node_id = json_object['node_id']
-            print "send node: {}, current leader: {}".format(sender_node_id, data['node_id'])
-            if(int(data['node_id']) != int(sender_node_id)):
-                if(sender_r_number > data['random_value']):
-                    data['node_id'] = sender_node_id
-                    data['random_value'] = sender_r_number
-                    send_to_next_vessel(data)
-                leader = data['node_id']
-                print leader
-        except Exception as e:
-            print e
-
-    @app.post('/leader/<action>/<element_id:int>')
-    def leader_received(action, element_id):
-        ''' Reads the propagated data and depending on the action,
-        adds, modifies or deletes the entry from the leaders Board.
-        Propagates the data to the other vessels.  '''
-        global board
-        try:
-            json_object = request.json
-            int_element_id = int(element_id)
-            print "Leader has received action and is trying to propagate with action: {} and with element_id {}".format(action, element_id)
-            if action == "add":
-                print json_object
-                entry_object = create_entry(json_object)
-                add_new_element_to_store(entry_object, is_propagated_call=True)
-                board.sort()
-                thread = Thread(target=propagate_to_vessels,
-                                args=('/propagate/{}/{}'.format(action, None), entry_object))
-                print "Propagate to vessels in leader_received"
-            elif action == "delete":
-                delete_element_from_store(
-                    int_element_id, is_propagated_call=True)
-                thread = Thread(target=propagate_to_vessels,
-                                args=('/propagate/{}/{}'.format(action, element_id), None))
-            elif action == "modify":
-                modify_element_in_store(
-                    int_element_id, json_object, is_propagated_call=True)
-                thread = Thread(target=propagate_to_vessels,
-                                args=('/propagate/{}/{}'.format(action, element_id), json_object))
-            thread.daemon = True
-            thread.start()
-        except Exception as e:
-            pass
-
     # ------------------------------------------------------------------------------------------------------
     # EXECUTION
     # ------------------------------------------------------------------------------------------------------
@@ -315,12 +220,8 @@ try:
             vessel_list[str(i)] = '10.1.0.{}'.format(str(i))
 
         try:
-            thread = Thread(target=leader_selection_start, args=(node_id,))
-            thread.start()
             run(app, host=vessel_list[str(node_id)], port=port)
-            # sleep(1)
-            # leader_thread = Thread(target=sel ect_leader, args=)
-            # select_leader(vessel_list)
+
         except Exception as e:
             print e
     # ------------------------------------------------------------------------------------------------------
