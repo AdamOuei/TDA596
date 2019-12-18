@@ -24,13 +24,13 @@ class Board:
     board = {}
 
     def add(self, entry):
-        self.board[entry['ident']] = entry['data']
+        self.board[entry['ident']] = entry
 
     def modify(self, element_id, data):
-        self.board[element_id] = data
+        self.board.get(element_id)['data'] = data
 
-    def delete(self, element_id):
-        self.board.pop(element_id)
+    def pop(self, element_id):
+        return self.board.pop(element_id)
 
     def sort(self):
         tmp = {}
@@ -38,10 +38,28 @@ class Board:
             tmp[i] = self.board[i]
         self.board = tmp
 
+    def lookup(self, element_id):
+        return self.board.get(element_id)
+
+    def exists(self, element_id):
+        if self.lookup(element_id) != None:
+            return True
+        return False
+
+    def modifyId(self, element_id, new_element_id):
+        self.board.get(element_id)['ident'] = new_element_id
+
+    def iteritems(self):
+        tmp = []
+        for i in sorted(self.board.keys()):
+            tmp.append((i, self.lookup(i)['data']))
+        return tmp
+
 
 try:
     app = Bottle()
     board = Board()
+    history_board = Board()
     unique_id = 0
     # ------------------------------------------------------------------------------------------------------
     # BOARD FUNCTIONS
@@ -71,7 +89,7 @@ try:
         global board
         success = False
         try:
-            board.delete(element_id)
+            board.pop(element_id)
             success = True
         except Exception as e:
             print e
@@ -83,14 +101,33 @@ try:
 
     def create_entry(new_entry):
         # Gives each new entry a unique id
-        global unique_id
-        entry = {'ident': unique_id, 'data': new_entry}
+        global unique_id, node_id
         unique_id += 1
+        entry = {'ident': unique_id, 'data': new_entry, 'node_id': node_id}
         return entry
 
-    # ------------------------------------------------------------------------------------------------------
-    # DISTRIBUTED COMMUNICATIONS FUNCTIONS
-    # ------------------------------------------------------------------------------------------------------
+    def update_board_ids(entry):
+        global board, unique_id
+        curr_id = entry.get('ident')
+
+        if not board.exists(curr_id):
+            unique_id = curr_id
+            add_new_element_to_store(entry, is_propagated_call=True)
+            board.sort()
+        elif entry.get('node_id') > board.lookup(curr_id).get('node_id'):
+            changing_entry = board.pop(curr_id)
+            changing_entry['ident'] = curr_id + 1
+            unique_id = curr_id + 1
+            add_new_element_to_store(entry, is_propagated_call=True)
+            board.sort()
+            update_board_ids(changing_entry)
+        else:
+            entry['ident'] = curr_id + 1
+            unique_id = curr_id + 1
+            update_board_ids(entry)
+            # ------------------------------------------------------------------------------------------------------
+            # DISTRIBUTED COMMUNICATIONS FUNCTIONS
+            # ------------------------------------------------------------------------------------------------------
 
     def contact_vessel(vessel_ip, path, payload=None, req='POST'):
         # Try to contact another server (vessel) through a POST or GET request, once
@@ -130,12 +167,12 @@ try:
     @app.route('/')
     def index():
         global board, node_id
-        return template('server/index.tpl', board_title='Vessel {}'.format(node_id), board_dict=sorted(board.board.iteritems()), members_name_string='YOUR NAME')
+        return template('server/index.tpl', board_title='Vessel {}'.format(node_id), board_dict=sorted(board.iteritems()), members_name_string='YOUR NAME')
 
     @app.get('/board')
     def get_board():
         global board, node_id
-        return template('server/boardcontents_template.tpl', board_title='Vessel {}'.format(node_id), board_dict=sorted(board.board.iteritems()))
+        return template('server/boardcontents_template.tpl', board_title='Vessel {}'.format(node_id), board_dict=sorted(board.iteritems()))
     # ------------------------------------------------------------------------------------------------------
     @app.post('/board')
     def client_add_received():
@@ -145,8 +182,7 @@ try:
         try:
             new_entry = request.forms.get('entry')
             entry_object = create_entry(new_entry)
-            add_new_element_to_store(entry_object)
-            board.sort()
+            update_board_ids(entry_object)
             thread = Thread(target=propagate_to_vessels,
                             args=('/propagate/add/0', entry_object))
             thread.daemon = True
@@ -168,11 +204,11 @@ try:
             if action == 'delete':
                 delete_element_from_store(element_id)
                 thread = Thread(target=propagate_to_vessels,
-                                args=('/propagate/delete/' + str_element_id, None))
+                                args=('/propagate/{}/{}'.format(action, element_id), None))
             elif action == 'modify':
                 modify_element_in_store(element_id, new_entry)
                 thread = Thread(target=propagate_to_vessels,
-                                args=('/propagate/modify/' + str_element_id, new_entry))
+                                args=('/propagate/{}/{}'.format(action, element_id), new_entry))
             thread.daemon = True
             thread.start()
             return "Success"
@@ -187,8 +223,8 @@ try:
         global board
         json_object = request.json
         if action == "add":
-            add_new_element_to_store(json_object, is_propagated_call=True)
-            board.sort()
+            update_board_ids(json_object)
+
         else:
             int_element_id = int(element_id)
             if action == "delete":
