@@ -88,19 +88,32 @@ footer {
     font-weight: bold; 
 }
 
+#top_wrapper {
+    display: flex;
+    flex-direction: row;
+}
+
+#leader_text {
+    margin-right: 20px;
+    margin-left: auto;
+    font-size: 20px;
+}
 
 </style>
     <title>Distributed board - TDA596 (Chalmers)</title>
 </head>
 <body>
     <!-- this place will show a count down for the automatic reload of the board contents, downloaded periodically from the server using the javascript function reload_countdown. -->
-    <div>
-        <div id="countdown_placeholder"></div>
-        <!-- this place will show the actual contents of the blackboard. 
-        It will be reloaded automatically from the server -->
-        <!-- This place shows the status of the auto-reload. 
-        An error shown here means the server is not responding -->
-        <div id="boardcontents_status_placeholder">0: success</div>
+    <div id="top_wrapper">
+        <div>
+            <div id="countdown_placeholder"></div>
+            <!-- this place will show the actual contents of the blackboard. 
+            It will be reloaded automatically from the server -->
+            <!-- This place shows the status of the auto-reload. 
+            An error shown here means the server is not responding -->
+            <div id="boardcontents_status_placeholder">0: success</div>
+        </div>
+        <div id="leader_text"><p>Leader vessel: {{leader}} (Random nbr: {{rand}})</p></div>
     </div>
     
 
