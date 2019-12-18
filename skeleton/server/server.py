@@ -82,7 +82,7 @@ try:
     def leader_selection_start(node_id):
         # Waits for all nodes to be up, then starts the leader selection
         global data
-        # This is not good, this is a specific value for us. We should find some other wau to do this
+        # This is not good, this is a specific value for us. We should find some other way to do this
         time.sleep(4)
         random_value = random.randint(0, 100000)
         data = {'node_id': node_id,
@@ -126,15 +126,12 @@ try:
     def send_to_next_vessel(data):
         # Passes data from one node to its next neighbor
         global vessel_list, node_id
-
         path = '/select/leader/{}'.format(node_id)
         next_id = (int(node_id) % 7) + 1
         next_ip = vessel_list.get(str(next_id))
-        print "The next ip is : {} and the data sent was : {}".format(next_ip, data)
         thread = Thread(target=contact_vessel, args=(next_ip, path, data))
         thread.daemon = True
         thread.start()
-        print "Contacted vessel"
 
     # ------------------------------------------------------------------------------------------------------
     # ROUTES
@@ -163,18 +160,12 @@ try:
                 leader_ip = vessel_list.get(str(leader))
                 contact_vessel(
                     leader_ip, '/leader/add/0', new_entry)
-
-                # thread = Thread(target=contact_vessel, args=(
-                #     leader_ip, '/leader/add/none', new_entry))
-                # thread.daemon
-                # thread.start()
             else:
                 add_new_element_to_store(new_entry)
                 thread = Thread(target=propagate_to_vessels,
                                 args=('/propagate/add/0', new_entry))
                 thread.daemon = True
                 thread.start()
-                thread.join()
             return new_entry
         except Exception as e:
             print e
@@ -187,7 +178,6 @@ try:
         global leader, node_id, vessel_list
         try:
             action = request.forms.get('delete')
-            str_element_id = str(element_id)
             new_entry = request.forms.get('modify_entry')
             if node_id != leader:
                 leader_ip = vessel_list.get(str(leader))
@@ -197,11 +187,11 @@ try:
                 if action == 'delete':
                     delete_element_from_store(element_id)
                     thread = Thread(target=propagate_to_vessels,
-                                    args=('/propagate/delete/' + str_element_id, None))
+                                    args=('/propagate/{}/{}'.format(action, element_id), None))
                 elif action == 'modify':
                     modify_element_in_store(element_id, new_entry)
                     thread = Thread(target=propagate_to_vessels,
-                                    args=('/propagate/modify/' + str_element_id, new_entry))
+                                    args=('/propagate/{}/{}'.format(action, element_id), new_entry))
             thread.daemon = True
             thread.start()
             return "Success"
@@ -229,7 +219,6 @@ try:
     @app.post('/select/leader/<sender_node>')
     def select_leader(sender_node):
         global node_id, data, leader
-        print "In select leader"
         try:
             json_object = request.json
 
@@ -241,7 +230,6 @@ try:
                     data = json_object
                 send_to_next_vessel(data)
                 leader = data['node_id']
-                print leader
         except Exception as e:
             print e
 
