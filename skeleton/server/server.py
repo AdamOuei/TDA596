@@ -46,8 +46,8 @@ class Board:
             return True
         return False
 
-    def modifyId(self, element_id, new_element_id):
-        self.board.get(element_id)['ident'] = new_element_id
+    def modifyId(self, element_id):
+        self.board.get(element_id)['ident'] = element_id + 1
 
     def iteritems(self):
         tmp = []
@@ -55,11 +55,15 @@ class Board:
             tmp.append((i, self.lookup(i)['data']))
         return tmp
 
+    def deleteAll(self):
+        self.board.clear()
+
 
 try:
     app = Bottle()
     board = Board()
-    history_board = Board()
+    action_history = []
+    action_waiting = []
     unique_id = 0
     # ------------------------------------------------------------------------------------------------------
     # BOARD FUNCTIONS
@@ -95,18 +99,8 @@ try:
             print e
         return success
 
-    # ------------------------------------------------------------------------------------------------------
-    # HELPER FUNCTIONS
-    # ------------------------------------------------------------------------------------------------------
-
-    def create_entry(new_entry):
-        # Gives each new entry a unique id
-        global unique_id, node_id
-        unique_id += 1
-        entry = {'ident': unique_id, 'data': new_entry, 'node_id': node_id}
-        return entry
-
-    def update_board_ids(entry):
+# Vill nog lägga in detta i add_element_to_store och använda is_propagated_call
+    def update_element_id_in_store(entry):
         global board, unique_id
         curr_id = entry.get('ident')
 
@@ -120,14 +114,55 @@ try:
             unique_id = curr_id + 1
             add_new_element_to_store(entry, is_propagated_call=True)
             board.sort()
-            update_board_ids(changing_entry)
+            update_element_id_in_store(changing_entry)
         else:
             entry['ident'] = curr_id + 1
             unique_id = curr_id + 1
-            update_board_ids(entry)
-            # ------------------------------------------------------------------------------------------------------
-            # DISTRIBUTED COMMUNICATIONS FUNCTIONS
-            # ------------------------------------------------------------------------------------------------------
+            update_element_id_in_store(entry)
+
+    # ------------------------------------------------------------------------------------------------------
+    # HELPER FUNCTIONS
+    # ------------------------------------------------------------------------------------------------------
+
+    def create_entry(new_entry):
+        # Gives each new entry a unique id
+        global unique_id, node_id
+        unique_id += 1
+        entry = {'ident': unique_id, 'data': new_entry, 'node_id': node_id}
+        return entry
+
+    def add_to_history(action, data):
+        global action_history
+        history_data = {'data': data, 'action': action}
+        action_history.append(history_data)
+
+    def add_to_waiting(action, data):
+        global action_history, action_waiting
+        action_in_history = False
+        for a in action_history:
+            if a.get('action') == 'delete':
+                if a.get('data') == data:
+                    action_in_history = True
+            else:
+                if a.get('data').get('ident') == data.get('ident'):
+                    action_in_history = True
+        if not action_in_history:
+            waiting_data = {'data': data, 'action': action}
+            action_waiting.append(waiting_data)
+
+    def check_waiting_actions():
+        global action_waiting
+        for action in action_waiting:
+            if board.exists(action.get('ident')):
+                if action.get('action') == 'delete':
+                    delete_element_from_store(action.get('ident'))
+                else:
+                    modify_element_in_store(action.get(
+                        'data').get('ident'), action.get('data'))
+
+        # ------------------------------------------------------------------------------------------------------
+        # DISTRIBUTED COMMUNICATIONS FUNCTIONS
+        # ------------------------------------------------------------------------------------------------------
 
     def contact_vessel(vessel_ip, path, payload=None, req='POST'):
         # Try to contact another server (vessel) through a POST or GET request, once
@@ -176,18 +211,19 @@ try:
     # ------------------------------------------------------------------------------------------------------
     @app.post('/board')
     def client_add_received():
-        ''' Reads the entry and creates an entry_object with an ID for the entry. 
+        ''' Reads the entry and creates an entry_object with an ID for the entry.
         Creates a thread and propagates the same entry_object to the other vessels'''
         global node_id, board
         try:
             new_entry = request.forms.get('entry')
             entry_object = create_entry(new_entry)
-            update_board_ids(entry_object)
+            update_element_id_in_store(entry_object)
             thread = Thread(target=propagate_to_vessels,
                             args=('/propagate/add/0', entry_object))
             thread.daemon = True
             thread.start()
             thread.join()
+            check_waiting_actions()
             return new_entry
         except Exception as e:
             print e
@@ -223,16 +259,21 @@ try:
         global board
         json_object = request.json
         if action == "add":
-            update_board_ids(json_object)
-
+            update_element_id_in_store(json_object)
+            check_waiting_actions()
         else:
             int_element_id = int(element_id)
-            if action == "delete":
-                delete_element_from_store(
-                    int_element_id, is_propagated_call=True)
-            elif action == "modify":
-                modify_element_in_store(
-                    int_element_id, json_object, is_propagated_call=True)
+            if board.exists(int_element_id):
+                if action == "delete":
+                    delete_element_from_store(
+                        int_element_id, is_propagated_call=True)
+                elif action == "modify":
+                    modify_element_in_store(
+                        int_element_id, json_object, is_propagated_call=True)
+                add_to_history(action, json_object)
+
+            else:
+                add_to_waiting(action, json_object)
 
     # ------------------------------------------------------------------------------------------------------
     # EXECUTION
