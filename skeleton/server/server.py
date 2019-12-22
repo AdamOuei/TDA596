@@ -58,17 +58,11 @@ class Board:
     def exists(self, element_id):
         return self.lookup(element_id) != None
 
-    def modifyId(self, element_id):
-        self.board.get(element_id)['ident'] = element_id + 1
-
     def iteritems(self):
         tmp = []
         for i in sorted(self.board.keys()):
             tmp.append((i, self.lookup(i)['data']))
         return tmp
-
-    def deleteAll(self):
-        self.board.clear()
 
 
 try:
@@ -87,17 +81,14 @@ try:
             curr_id = entry.get('ident')
 
             if board.in_action_waiting(curr_id):
-                action = board.get_waiting_action(curr_id)
+                action = board.action_waiting.pop(curr_id)
                 if action.get('action') == 'modify':
                     entry[data] = action.get('data')
                     add_with_id_check(entry)
-            elif board.in_delete_history(curr_id):
-                action = board.get_history_action(curr_id)
-                if not action.get('action') == 'delete':
-                    add_with_id_check(entry)
-            else:
+                    success = True
+            elif not board.in_delete_history(curr_id):
                 add_with_id_check(entry)
-            success = True
+                success = True
         except Exception as e:
             print e
         return success
@@ -127,12 +118,10 @@ try:
         global board
         success = False
         try:
-            if not board.exists(element_id):
-                if not board.in_delete_history(element_id):
-                    board.add_to_waiting(modified_element)
+            if not board.exists(element_id) and not board.in_delete_history(element_id):
+                board.add_to_waiting(modified_element)
             else:
                 board.modify(element_id, modified_element)
-                board.add_to_waiting(modified_element)
             success = True
         except Exception as e:
             print e
@@ -144,37 +133,15 @@ try:
 
         data = {'ident': element_id, 'action': 'delete'}
         try:
-            if not board.exists(element_id):
-                if not board.in_delete_history(curr_id):
-                    board.add_to_waiting(data)
+            if not board.exists(element_id) and not board.in_delete_history(curr_id):
+                board.add_to_waiting(data)
             else:
                 board.pop(element_id)
                 board.add_to_history(data)
-            success = True
+                success = True
         except Exception as e:
             print e
         return success
-
-# Vill nog lägga in detta i add_element_to_store och använda is_propagated_call
-    def update_element_id_in_store(entry):
-        global board, unique_id
-        curr_id = entry.get('ident')
-
-        if not board.exists(curr_id):
-            unique_id = curr_id
-            add_new_element_to_store(entry, is_propagated_call=True)
-            board.sort()
-        elif entry.get('node_id') > board.lookup(curr_id).get('node_id'):
-            changing_entry = board.pop(curr_id)
-            changing_entry['ident'] = curr_id + 1
-            unique_id = curr_id + 1
-            add_new_element_to_store(entry, is_propagated_call=True)
-            board.sort()
-            update_element_id_in_store(changing_entry)
-        else:
-            entry['ident'] = curr_id + 1
-            unique_id = curr_id + 1
-            update_element_id_in_store(entry)
 
     # ------------------------------------------------------------------------------------------------------
     # HELPER FUNCTIONS
@@ -244,12 +211,13 @@ try:
         try:
             new_entry = request.forms.get('entry')
             entry_object = create_entry(new_entry)
-            add_new_element_to_store(entry_object)
-            thread = Thread(target=propagate_to_vessels,
-                            args=('/propagate/add/0', entry_object))
-            thread.daemon = True
-            thread.start()
-            thread.join()
+            ok_add = add_new_element_to_store(entry_object)
+            if ok_add:
+                thread = Thread(target=propagate_to_vessels,
+                                args=('/propagate/add/0', entry_object))
+                thread.daemon = True
+                thread.start()
+                thread.join()
             return new_entry
         except Exception as e:
             print e
@@ -264,13 +232,15 @@ try:
             action = request.forms.get('delete')
             new_entry = request.forms.get('modify_entry')
             if action == 'delete':
-                delete_element_from_store(element_id)
-                thread = Thread(target=propagate_to_vessels,
-                                args=('/propagate/{}/{}'.format(action, element_id), None))
+                ok_delete = delete_element_from_store(element_id)
+                if ok_delete:
+                    thread = Thread(target=propagate_to_vessels,
+                                    args=('/propagate/{}/{}'.format(action, element_id), None))
             elif action == 'modify':
-                modify_element_in_store(element_id, new_entry)
-                thread = Thread(target=propagate_to_vessels,
-                                args=('/propagate/{}/{}'.format(action, element_id), new_entry))
+                ok_modify = modify_element_in_store(element_id, new_entry)
+                if ok_modify:
+                    thread = Thread(target=propagate_to_vessels,
+                                    args=('/propagate/{}/{}'.format(action, element_id), new_entry))
             thread.daemon = True
             thread.start()
             return "Success"
@@ -288,21 +258,14 @@ try:
             add_new_element_to_store(json_object)
         else:
             int_element_id = int(element_id)
-            if board.exists(int_element_id):
-                if action == "delete":
-                    delete_element_from_store(
-                        int_element_id, is_propagated_call=True)
-                    data = {'ident': element_id, 'action': action}
-                    board.add_to_history(data)
-                elif action == "modify":
-                    modify_element_in_store(
-                        int_element_id, json_object, is_propagated_call=True)
-
-            else:
-                data = json_object
-                if action == "delete":
-                    data = {'ident': element_id, 'action': action}
-                board.add_to_waiting(action, json_object)
+            if action == "delete":
+                delete_element_from_store(
+                    int_element_id, is_propagated_call=True)
+                data = {'ident': element_id, 'action': action}
+                board.add_to_history(data)
+            elif action == "modify":
+                modify_element_in_store(
+                    int_element_id, json_object, is_propagated_call=True)
 
     # ------------------------------------------------------------------------------------------------------
     # EXECUTION
