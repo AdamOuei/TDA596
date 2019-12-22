@@ -22,6 +22,8 @@ import requests
 class Board:
 
     board = {}
+    delete_history = {}
+    action_waiting = {}
 
     def add(self, entry):
         self.board[entry['ident']] = entry
@@ -31,6 +33,18 @@ class Board:
 
     def pop(self, element_id):
         return self.board.pop(element_id)
+
+    def add_to_waiting(self, data):
+        action_waiting[data.get('ident')] = data
+
+    def add_to_history(self, data):
+        delete_history[data.get('ident')] = data
+
+    def in_action_waiting(self, element_id):
+        return self.action_waiting.get(element_id) != None
+
+    def in_delete_history(self, element_id):
+        return self.delete_history.get(element_id) != None
 
     def sort(self):
         tmp = {}
@@ -42,9 +56,7 @@ class Board:
         return self.board.get(element_id)
 
     def exists(self, element_id):
-        if self.lookup(element_id) != None:
-            return True
-        return False
+        return self.lookup(element_id) != None
 
     def modifyId(self, element_id):
         self.board.get(element_id)['ident'] = element_id + 1
@@ -62,28 +74,65 @@ class Board:
 try:
     app = Bottle()
     board = Board()
-    action_history = []
-    action_waiting = []
     unique_id = 0
+
     # ------------------------------------------------------------------------------------------------------
     # BOARD FUNCTIONS
     # ------------------------------------------------------------------------------------------------------
 
-    def add_new_element_to_store(element, is_propagated_call=False):
+    def add_new_element_to_store(entry, is_propagated_call=False):
         global board
         success = False
         try:
-            board.add(element)
+            curr_id = entry.get('ident')
+
+            if board.in_action_waiting(curr_id):
+                action = board.get_waiting_action(curr_id)
+                if action.get('action') == 'modify':
+                    entry[data] = action.get('data')
+                    add_with_id_check(entry)
+            elif board.in_delete_history(curr_id):
+                action = board.get_history_action(curr_id)
+                if not action.get('action') == 'delete':
+                    add_with_id_check(entry)
+            else:
+                add_with_id_check(entry)
             success = True
         except Exception as e:
             print e
         return success
 
+    def add_with_id_check(entry):
+        global board, unique_id
+
+        curr_id = entry.get('ident')
+
+        if not board.exists(curr_id):
+            unique_id = curr_id
+            board.add(entry)
+            board.sort()
+        elif entry.get('node_id') > board.lookup(curr_id).get('node_id'):
+            changing_entry = board.pop(curr_id)
+            changing_entry['ident'] = curr_id + 1
+            unique_id = curr_id + 1
+            board.add(entry)
+            board.sort()
+            add_new_element_to_store(changing_entry)
+        else:
+            entry['ident'] = curr_id + 1
+            unique_id = curr_id + 1
+            add_new_element_to_store(entry)
+
     def modify_element_in_store(element_id, modified_element, is_propagated_call=False):
         global board
         success = False
         try:
-            board.modify(element_id, modified_element)
+            if not board.exists(element_id):
+                if not board.in_delete_history(element_id):
+                    board.add_to_waiting(modified_element)
+            else:
+                board.modify(element_id, modified_element)
+                board.add_to_waiting(modified_element)
             success = True
         except Exception as e:
             print e
@@ -92,8 +141,15 @@ try:
     def delete_element_from_store(element_id, is_propagated_call=False):
         global board
         success = False
+
+        data = {'ident': element_id, 'action': 'delete'}
         try:
-            board.pop(element_id)
+            if not board.exists(element_id):
+                if not board.in_delete_history(curr_id):
+                    board.add_to_waiting(data)
+            else:
+                board.pop(element_id)
+                board.add_to_history(data)
             success = True
         except Exception as e:
             print e
@@ -131,38 +187,9 @@ try:
         entry = {'ident': unique_id, 'data': new_entry, 'node_id': node_id}
         return entry
 
-    def add_to_history(action, data):
-        global action_history
-        history_data = {'data': data, 'action': action}
-        action_history.append(history_data)
-
-    def add_to_waiting(action, data):
-        global action_history, action_waiting
-        action_in_history = False
-        for a in action_history:
-            if a.get('action') == 'delete':
-                if a.get('data') == data:
-                    action_in_history = True
-            else:
-                if a.get('data').get('ident') == data.get('ident'):
-                    action_in_history = True
-        if not action_in_history:
-            waiting_data = {'data': data, 'action': action}
-            action_waiting.append(waiting_data)
-
-    def check_waiting_actions():
-        global action_waiting
-        for action in action_waiting:
-            if board.exists(action.get('ident')):
-                if action.get('action') == 'delete':
-                    delete_element_from_store(action.get('ident'))
-                else:
-                    modify_element_in_store(action.get(
-                        'data').get('ident'), action.get('data'))
-
-        # ------------------------------------------------------------------------------------------------------
-        # DISTRIBUTED COMMUNICATIONS FUNCTIONS
-        # ------------------------------------------------------------------------------------------------------
+    # ------------------------------------------------------------------------------------------------------
+    # DISTRIBUTED COMMUNICATIONS FUNCTIONS
+    # ------------------------------------------------------------------------------------------------------
 
     def contact_vessel(vessel_ip, path, payload=None, req='POST'):
         # Try to contact another server (vessel) through a POST or GET request, once
@@ -217,13 +244,12 @@ try:
         try:
             new_entry = request.forms.get('entry')
             entry_object = create_entry(new_entry)
-            update_element_id_in_store(entry_object)
+            add_new_element_to_store(entry_object)
             thread = Thread(target=propagate_to_vessels,
                             args=('/propagate/add/0', entry_object))
             thread.daemon = True
             thread.start()
             thread.join()
-            check_waiting_actions()
             return new_entry
         except Exception as e:
             print e
@@ -259,21 +285,24 @@ try:
         global board
         json_object = request.json
         if action == "add":
-            update_element_id_in_store(json_object)
-            check_waiting_actions()
+            add_new_element_to_store(json_object)
         else:
             int_element_id = int(element_id)
             if board.exists(int_element_id):
                 if action == "delete":
                     delete_element_from_store(
                         int_element_id, is_propagated_call=True)
+                    data = {'ident': element_id, 'action': action}
+                    board.add_to_history(data)
                 elif action == "modify":
                     modify_element_in_store(
                         int_element_id, json_object, is_propagated_call=True)
-                add_to_history(action, json_object)
 
             else:
-                add_to_waiting(action, json_object)
+                data = json_object
+                if action == "delete":
+                    data = {'ident': element_id, 'action': action}
+                board.add_to_waiting(action, json_object)
 
     # ------------------------------------------------------------------------------------------------------
     # EXECUTION
