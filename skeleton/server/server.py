@@ -35,10 +35,10 @@ class Board:
         return self.board.pop(element_id)
 
     def add_to_waiting(self, data):
-        action_waiting[data.get('ident')] = data
+        self.action_waiting[data.get('ident')] = data
 
     def add_to_history(self, data):
-        delete_history[data.get('ident')] = data
+        self.delete_history[data.get('ident')] = data
 
     def in_action_waiting(self, element_id):
         return self.action_waiting.get(element_id) != None
@@ -86,6 +86,8 @@ try:
                     entry[data] = action.get('data')
                     add_with_id_check(entry)
                     success = True
+                else:
+                    board.add_to_history(entry)
             elif not board.in_delete_history(curr_id):
                 add_with_id_check(entry)
                 success = True
@@ -108,11 +110,11 @@ try:
             unique_id = curr_id + 1
             board.add(entry)
             board.sort()
-            add_new_element_to_store(changing_entry)
+            add_with_id_check(changing_entry)
         else:
             entry['ident'] = curr_id + 1
             unique_id = curr_id + 1
-            add_new_element_to_store(entry)
+            add_with_id_check(entry)
 
     def modify_element_in_store(element_id, modified_element, is_propagated_call=False):
         global board
@@ -133,7 +135,7 @@ try:
 
         data = {'ident': element_id, 'action': 'delete'}
         try:
-            if not board.exists(element_id) and not board.in_delete_history(curr_id):
+            if not board.exists(element_id) and not board.in_delete_history(element_id):
                 board.add_to_waiting(data)
             else:
                 board.pop(element_id)
