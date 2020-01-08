@@ -128,7 +128,9 @@ try:
 
         for vessel_id, vessel_ip in vessel_list.items():
             if int(vessel_id) != node_id:  # don't propagate to yourself
-                success = contact_vessel(vessel_ip, path, payload, req)
+                thread = Thread(target=contact_vessel args=(vessel_ip, path, payload, request))
+                thread.daemon = True
+                thread.start()
                 if not success:
                     print "\n\nCould not contact vessel {}\n\n".format(vessel_id)
 

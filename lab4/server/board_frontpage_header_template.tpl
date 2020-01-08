@@ -107,7 +107,7 @@ footer {
       <h3>Vote</h3>
       <form id="usrform" target="noreload-form-target">
         <input type="submit" formmethod="post" formaction="/vote/attack" value="Attack" />
-        <input type="submit" formmethod="post" formaction="/vote/retreat" value="Retreat" />
+        <input type="submit" formmethod="post" formaction="/vote/withdraw" value="Withdraw" />
         <input type="submit" formmethod="post" formaction="/vote/byzantine" value="Byzantine" />
       </form>
     </div>
@@ -120,3 +120,4 @@ footer {
     </div>
 
     <!-- The board contents come here -->  
+
